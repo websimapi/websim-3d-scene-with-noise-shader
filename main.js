@@ -2,17 +2,17 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.m
 
 // Global settings
 const settings = {
-  speed: 0.5, // Slower default speed
+  speed: 0.5,
   noiseScale: 1.0,
   slideDirection: { x: 1.0, y: 0.0 },
   colorA: '#ffffff',
   colorB: '#000000',
-  mixRatio: 1.0, // Full contrast by default
-  valueSteps: 2, // Keep at 2 as recommended
+  mixRatio: 1.0,
+  valueSteps: 2,
   slideFrequency: 1.0,
-  pixelSize: 8, // Larger default pixels
-  differenceThreshold: 0.2, // More pronounced difference detection
-  motionBlur: 0.8 // New setting for motion trail strength
+  pixelSize: 32,
+  differenceThreshold: 0.2,
+  motionBlur: 0.8
 };
 
 // GUI setup
@@ -25,7 +25,7 @@ animationFolder.add(settings, 'motionBlur', 0, 1).name('Motion Trail');
 const noiseFolder = gui.addFolder('Effect');
 noiseFolder.add(settings, 'noiseScale', 0.1, 2.0).name('Effect Scale');
 noiseFolder.add(settings, 'valueSteps', 2, 4).step(1).name('Value Steps');
-noiseFolder.add(settings, 'pixelSize', 2, 32).step(2).name('Pixel Size');
+noiseFolder.add(settings, 'pixelSize', 2, 128).step(2).name('Pixel Size');
 noiseFolder.add(settings, 'differenceThreshold', 0.05, 0.5).name('Motion Sensitivity');
 
 const directionFolder = gui.addFolder('Direction');
@@ -87,8 +87,10 @@ const fragmentShader = `
 
   // Get frame value with motion detection
   float getFrameValue(vec2 uv, float t) {
-    // Calculate base grid positions
-    vec2 grid = floor(uv * pixelSize) / pixelSize;
+    // Use screen-space pixel coordinates for consistent sizing
+    vec2 screenSize = vec2(${window.innerWidth}.0, ${window.innerHeight}.0);
+    vec2 pixelCoord = uv * screenSize;
+    vec2 grid = floor(pixelCoord / pixelSize) * pixelSize / screenSize;
     
     // Calculate motion vectors
     vec2 slideOffset = slideDirection * t * slideFrequency;
@@ -96,14 +98,13 @@ const fragmentShader = `
     vec2 prevPos = currentPos - slideDirection * differenceThreshold;
     
     // Sample multiple points for motion blur
-    float currentValue = hash(currentPos);
-    float prevValue = hash(prevPos);
+    float currentValue = hash(currentPos * noiseScale);
+    float prevValue = hash(prevPos * noiseScale);
     
     // Motion detection
     float diff = abs(currentValue - prevValue);
     float motionMask = smoothstep(0.0, differenceThreshold, diff);
     
-    // Blend between current and previous based on motion
     return mix(
       currentValue,
       prevValue,
@@ -171,10 +172,10 @@ torus.position.x = -2;
 scene.add(torus);
 
 // Background
-const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
+const backgroundGeometry = new THREE.PlaneGeometry(40, 40);
 const backgroundMaterial = createNoiseShaderMaterial(3.0);
 const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
-background.position.z = -5;
+background.position.z = -10;
 scene.add(background);
 
 // Lighting
@@ -224,9 +225,17 @@ function animate(time) {
 window.addEventListener('resize', onWindowResize, false);
 
 function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(width, height);
+  
+  // Update all materials with new screen dimensions
+  [cube.material, sphere.material, torus.material, backgroundMaterial].forEach(material => {
+    material.needsUpdate = true;
+  });
 }
 
 animate(0);
