@@ -1,20 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
 
-// Global settings (adjusted defaults)
+// Global settings (adjusted for phi phenomenon)
 const settings = {
-  speed: 1.0, // Animation speed
-  noiseScale: 0.5, // Scale of the noise effect
-  slideDirection: { x: 1.0, y: 0.0 }, // Direction of sliding
-  colorA: '#ffffff', 
+  speed: 0.5, // Slower default speed
+  noiseScale: 1.0, // Increased scale
+  slideDirection: { x: 1.0, y: 0.0 }, // Default horizontal movement
+  colorA: '#ffffff',
   colorB: '#000000',
-  mixRatio: 1.0, // Contrast
-  valueSteps: 2, // Number of value steps (binary effect)
-  slideFrequency: 1.0, // How often the effect updates
-  pixelSize: 64, // Increased default pixel size
-  differenceThreshold: 0.1, // Sensitivity for motion detection
-  motionBlur: 0.95, // Increased motion trail
-  randomSeed: 12345, // Seed for random generation
-  invert: false // Invert the effect
+  mixRatio: 1.0,
+  valueSteps: 2, // Binary effect
+  slideFrequency: 0.5, // Slower updates
+  pixelSize: 16, // Medium pixel size
+  differenceThreshold: 0.2, // Increased threshold
+  motionBlur: 0.98, // Higher motion persistence
+  randomSeed: 12345,
+  invert: false
 };
 
 // GUI setup
@@ -68,7 +68,7 @@ const vertexShader = `
   }
 `;
 
-// Updated fragment shader to better match compute shader behavior
+// Updated fragment shader with improved motion detection
 const fragmentShader = `
   uniform float time;
   uniform float noiseScale;
@@ -87,50 +87,54 @@ const fragmentShader = `
   varying vec2 vUv;
   varying vec3 vNormal;
 
-  // Improved hash function matching compute shader random values
+  // Improved noise function for more natural movement
   float hash(vec2 p) {
-    float h = dot(p, vec2(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
   }
 
-  // Get frame value with improved motion detection
   float getFrameValue(vec2 uv, float t) {
     vec2 screenSize = vec2(${window.innerWidth}.0, ${window.innerHeight}.0);
-    vec2 pixelCoord = floor(uv * screenSize / pixelSize) * pixelSize;
-    vec2 normalizedCoord = pixelCoord / screenSize;
+    vec2 pixCoord = floor(uv * screenSize / pixelSize) * pixelSize;
+    vec2 normCoord = pixCoord / screenSize;
     
-    // Calculate slide direction with time
-    vec2 slideOffset = slideDirection * t * slideFrequency;
-    vec2 currentPos = normalizedCoord + slideOffset;
+    // Improved motion calculation
+    float timeStep = floor(t * slideFrequency);
+    vec2 slideOffset = slideDirection * timeStep;
+    vec2 currentPos = normCoord + slideOffset / screenSize;
     vec2 prevPos = currentPos - slideDirection * differenceThreshold;
     
-    // Sample positions
-    float value = hash(currentPos * noiseScale + randomSeed);
-    float prevValue = hash(prevPos * noiseScale + randomSeed);
+    // Sample multiple points for better motion detection
+    float value = 0.0;
+    for(int i = 0; i < 4; i++) {
+      float offset = float(i) * 0.25;
+      vec2 samplePos = mix(prevPos, currentPos, offset);
+      value += hash(samplePos * noiseScale + randomSeed + timeStep);
+    }
+    value *= 0.25;
     
-    // Motion detection and trail
-    float diff = abs(value - prevValue);
-    float motionMask = smoothstep(0.0, differenceThreshold, diff);
+    // Motion persistence
+    float prevValue = hash(prevPos * noiseScale + randomSeed + timeStep - 1.0);
+    float motionFactor = length(slideDirection) * slideFrequency;
+    value = mix(value, prevValue, motionBlur * motionFactor);
     
-    // Combine values with motion blur
-    float result = mix(value, prevValue, motionMask * motionBlur);
+    // Quantize with improved contrast
+    value = floor(value * valueSteps) / max(1.0, valueSteps - 1.0);
+    value = smoothstep(0.1, 0.9, value);
     
-    // Quantize to steps
-    result = floor(result * valueSteps) / max(1.0, valueSteps - 1.0);
-    
-    // Apply inversion if needed
-    return invert ? 1.0 - result : result;
+    return invert ? 1.0 - value : value;
   }
 
   void main() {
     float value = getFrameValue(vUv, time);
     
-    // Apply normal-based shading
-    float shading = dot(vNormal, vec3(0.0, 1.0, 1.0)) * 0.5 + 0.5;
-    value = mix(value, value * shading, 0.2);
+    // Enhanced normal-based shading
+    float shading = dot(vNormal, normalize(vec3(0.5, 1.0, 0.5))) * 0.5 + 0.5;
+    value = mix(value, value * shading, 0.3);
     
-    // Final color mix
-    vec3 finalColor = mix(colorB, colorA, value * mixRatio);
+    // Improved color mixing
+    vec3 finalColor = mix(colorB, colorA, smoothstep(0.0, 1.0, value * mixRatio));
     gl_FragColor = vec4(finalColor, 1.0);
   }
 `;
@@ -196,21 +200,22 @@ scene.add(ambientLight);
 
 camera.position.z = 5;
 
-// Animation loop
+// Enhanced animation loop for smoother motion
 function animate(time) {
   requestAnimationFrame(animate);
   
   const t = time * 0.001 * settings.speed;
 
-  // Update rotations
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-  sphere.rotation.x += 0.01;
-  sphere.rotation.y += 0.01;
-  torus.rotation.x += 0.01;
-  torus.rotation.y += 0.01;
+  // Smoother rotation speeds
+  const rotationSpeed = 0.005;
+  cube.rotation.x += rotationSpeed;
+  cube.rotation.y += rotationSpeed;
+  sphere.rotation.x += rotationSpeed * 0.8;
+  sphere.rotation.y += rotationSpeed * 1.2;
+  torus.rotation.x += rotationSpeed * 1.1;
+  torus.rotation.y += rotationSpeed * 0.9;
 
-  // Update uniforms
+  // Update all materials
   [cube.material, sphere.material, torus.material, backgroundMaterial].forEach((material, index) => {
     Object.entries(settings).forEach(([key, value]) => {
       if (material.uniforms[key]) {
@@ -223,7 +228,7 @@ function animate(time) {
         }
       }
     });
-    material.uniforms.time.value = t + index;
+    material.uniforms.time.value = t + index * 0.5; // Offset timing for variety
   });
 
   renderer.render(scene, camera);
