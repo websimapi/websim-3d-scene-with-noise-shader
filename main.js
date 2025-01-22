@@ -73,7 +73,7 @@ const objectFragmentShader = `
   varying vec2 vUv;
 
   float random(vec2 st) {
-    return step(0.5, fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123));
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
   }
 
   vec2 wrap(vec2 value, vec2 size) {
@@ -93,17 +93,17 @@ const objectFragmentShader = `
     vec2 movedUv = getMovedUv(st, size);
     
     // Get current random value and moved random value
-    float value = random(st + time);
+    float currentValue = random(st + time);
     float movedValue = random(movedUv + time);
     
     // Determine if pixel should move based on frame count
     float frame = floor(time * 10.0);
     bool shouldMove = mod(frame, 2.0) == 0.0;
     
-    // If pixel should move, use moved value, otherwise use random value
-    float finalValue = shouldMove ? movedValue : value;
+    // Use moved value if we should move, otherwise use new random
+    float finalValue = shouldMove ? movedValue : currentValue;
     
-    // Step function to ensure only black or white values
+    // Force binary black/white
     finalValue = step(0.5, finalValue);
     
     gl_FragColor = vec4(vec3(finalValue), 1.0);
@@ -117,7 +117,7 @@ const backgroundFragmentShader = `
   varying vec2 vUv;
 
   float random(vec2 st) {
-    return step(0.5, fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123));
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
   }
 
   vec2 wrap(vec2 value, vec2 size) {
@@ -136,18 +136,18 @@ const backgroundFragmentShader = `
     vec2 size = vec2(1.0);
     vec2 movedUv = getMovedUv(st, size);
     
-    // Get current random value and moved random value
-    float value = random(st + time);
+    // Get current random value and moved random value 
+    float currentValue = random(st + time);
     float movedValue = random(movedUv + time);
     
     // Determine if pixel should move based on frame count
     float frame = floor(time * 10.0);
     bool shouldMove = mod(frame, 2.0) == 0.0;
     
-    // If pixel should move, use moved value, otherwise use random value
-    float finalValue = shouldMove ? movedValue : value;
+    // Use moved value if we should move, otherwise use new random
+    float finalValue = shouldMove ? movedValue : currentValue;
     
-    // Step function to ensure only black or white values
+    // Force binary black/white
     finalValue = step(0.5, finalValue);
     
     gl_FragColor = vec4(vec3(finalValue), 1.0);
