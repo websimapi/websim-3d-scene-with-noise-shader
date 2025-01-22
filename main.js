@@ -5,7 +5,7 @@ const settings = {
   speed: 2.0,
   noiseScale: 0.01,
   noiseIntensity: 1.0,
-  slideDirection: { x: 1.0, y: 0.0 },
+  slideDirection: { x: 1.0, y: 0.0 },  // Default to rightward motion
   colorA: '#ffffff',  
   colorB: '#000000',  
   mixRatio: 0.5,
@@ -25,8 +25,8 @@ noiseFolder.add(settings, 'noiseIntensity', 0.0, 2.0).name('Noise Intensity');
 noiseFolder.add(settings, 'valueSteps', 1, 10).step(1).name('Value Steps');
 
 const directionFolder = gui.addFolder('Direction');
-directionFolder.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
-directionFolder.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
+directionFolder.add(settings.slideDirection, 'x', -1, 1).step(1).name('Slide Direction X');
+directionFolder.add(settings.slideDirection, 'y', -1, 1).step(1).name('Slide Direction Y');
 
 const colorFolder = gui.addFolder('Colors');
 colorFolder.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
@@ -75,18 +75,23 @@ const fragmentShader = `
   }
 
   float getSlideValue(vec2 uv, float t) {
-    float slideTime = floor(t * slideFrequency);
-    vec2 neighbor = uv + noiseScale * slideDirection * sin(t);
+    // Normalize slide direction to prevent diagonal stretching
+    vec2 normalizedDir = normalize(slideDirection);
     
+    // Calculate the time-based offset
+    float slideTime = floor(t * slideFrequency);
+    
+    // Calculate the neighbor position using normalized direction
+    vec2 neighbor = uv + noiseScale * normalizedDir;
+    
+    // Get random values for current position and neighbor
     float r1 = random(uv + slideTime);
     float r2 = random(neighbor + slideTime);
     
-    // Check if neighbor pixel is moving
+    // Determine if neighbor is moving (using stable time offset)
     float neighborMoving = step(0.5, random(neighbor + slideTime + 1.0));
     
-    // Apply the two-rule system:
-    // 1. If pixel moves, take neighbor's value
-    // 2. If neighbor also moves, use random value
+    // Apply sliding rules
     float value = mix(r2, r1, neighborMoving);
     
     // Quantize the value into steps
@@ -180,12 +185,18 @@ function animate(time) {
   torus.rotation.x += 0.01;
   torus.rotation.y += 0.01;
 
+  // Ensure slide direction is normalized
+  const dir = new THREE.Vector2(settings.slideDirection.x, settings.slideDirection.y);
+  if (dir.length() > 0) {
+    dir.normalize();
+  }
+
   // Update all uniforms
   [cube.material, sphere.material, torus.material, backgroundMaterial].forEach((material, index) => {
     material.uniforms.time.value = t + index;
     material.uniforms.noiseScale.value = settings.noiseScale;
     material.uniforms.noiseIntensity.value = settings.noiseIntensity;
-    material.uniforms.slideDirection.value.set(settings.slideDirection.x, settings.slideDirection.y);
+    material.uniforms.slideDirection.value.copy(dir);
     material.uniforms.colorA.value.set(settings.colorA);
     material.uniforms.colorB.value.set(settings.colorB);
     material.uniforms.mixRatio.value = settings.mixRatio;
