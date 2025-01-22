@@ -7,6 +7,27 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// Settings object
+const settings = {
+  // Shader settings
+  timeScale: 1.0,
+  brightnessThreshold: 0.1,
+  speedSteps: 5.0,
+  moveSpeed: 0.01,
+  // Animation settings
+  rotationSpeed: 0.01,
+  // Direction controls
+  directionX: 1.0,
+  directionY: 1.0,
+  // Object visibility
+  showCube: true,
+  showSphere: true,
+  showTorus: true,
+  // Colors
+  backgroundColor: '#000000',
+  noiseColor: '#ffffff',
+};
+
 // Shared shader code
 const vertexShader = `
   varying vec2 vUv;
@@ -18,6 +39,12 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform float time;
+  uniform float timeScale;
+  uniform float brightnessThreshold;
+  uniform float speedSteps;
+  uniform float moveSpeed;
+  uniform vec2 direction;
+  uniform vec3 noiseColor;
   uniform vec2 resolution;
   varying vec2 vUv;
 
@@ -30,8 +57,7 @@ const fragmentShader = `
   }
 
   vec2 getMovedUv(vec2 uv, vec2 size) {
-    vec2 direction = vec2(sin(time), cos(time));
-    return wrap(uv + direction * 0.01, size);
+    return wrap(uv + direction * moveSpeed, size);
   }
 
   float getBrightness(vec3 color) {
@@ -41,31 +67,25 @@ const fragmentShader = `
   void main() {
     vec2 st = vUv;
     vec2 size = resolution;
+    float scaledTime = time * timeScale;
     
-    // Get moved UV coordinates
     vec2 movedUv = getMovedUv(st, vec2(1.0));
+    float currentNoise = random(st + scaledTime);
+    float movedNoise = random(movedUv + scaledTime);
     
-    // Generate noise values
-    float currentNoise = random(st + time);
-    float movedNoise = random(movedUv + time);
-    
-    // Create frame-based movement
-    float frame = floor(time * 10.0);
-    float speedSteps = 5.0;
+    float frame = floor(scaledTime * 10.0);
     float brightness = getBrightness(vec3(currentNoise));
     float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
     bool isRightFrame = mod(frame, frameDivisor) == 0.0;
     
-    // Determine final color value
     float value;
-    if (brightness < 0.1 || !isRightFrame) {
+    if (brightness < brightnessThreshold || !isRightFrame) {
       value = movedNoise;
     } else {
       value = mix(currentNoise, movedNoise, 0.5);
     }
     
-    // Output final color
-    gl_FragColor = vec4(vec3(value), 1.0);
+    gl_FragColor = vec4(noiseColor * value, 1.0);
   }
 `;
 
@@ -74,6 +94,12 @@ function createNoiseShaderMaterial(timeOffset = 0) {
   return new THREE.ShaderMaterial({
     uniforms: {
       time: { value: timeOffset },
+      timeScale: { value: settings.timeScale },
+      brightnessThreshold: { value: settings.brightnessThreshold },
+      speedSteps: { value: settings.speedSteps },
+      moveSpeed: { value: settings.moveSpeed },
+      direction: { value: new THREE.Vector2(settings.directionX, settings.directionY) },
+      noiseColor: { value: new THREE.Color(settings.noiseColor) },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
     },
     vertexShader,
@@ -81,7 +107,7 @@ function createNoiseShaderMaterial(timeOffset = 0) {
   });
 }
 
-// Create objects with shader materials
+// Create objects
 const cube = new THREE.Mesh(
   new THREE.BoxGeometry(),
   createNoiseShaderMaterial()
@@ -102,7 +128,7 @@ const torus = new THREE.Mesh(
 torus.position.x = -2;
 scene.add(torus);
 
-// Create background plane
+// Create background
 const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
 const backgroundMaterial = createNoiseShaderMaterial(3.0);
 const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
@@ -119,25 +145,78 @@ scene.add(ambientLight);
 
 camera.position.z = 5;
 
+// Setup GUI
+const gui = new dat.GUI();
+
+// Shader controls
+const shaderFolder = gui.addFolder('Shader Settings');
+shaderFolder.add(settings, 'timeScale', 0, 5).name('Time Scale');
+shaderFolder.add(settings, 'brightnessThreshold', 0, 1).name('Brightness Threshold');
+shaderFolder.add(settings, 'speedSteps', 1, 10).step(1).name('Speed Steps');
+shaderFolder.add(settings, 'moveSpeed', 0, 0.1).name('Move Speed');
+
+// Direction controls
+const directionFolder = gui.addFolder('Direction');
+directionFolder.add(settings, 'directionX', -1, 1).name('X Direction');
+directionFolder.add(settings, 'directionY', -1, 1).name('Y Direction');
+
+// Animation controls
+const animationFolder = gui.addFolder('Animation');
+animationFolder.add(settings, 'rotationSpeed', 0, 0.1).name('Rotation Speed');
+
+// Visibility controls
+const visibilityFolder = gui.addFolder('Visibility');
+visibilityFolder.add(settings, 'showCube').name('Show Cube');
+visibilityFolder.add(settings, 'showSphere').name('Show Sphere');
+visibilityFolder.add(settings, 'showTorus').name('Show Torus');
+
+// Color controls
+const colorFolder = gui.addFolder('Colors');
+colorFolder.addColor(settings, 'backgroundColor').name('Background');
+colorFolder.addColor(settings, 'noiseColor').name('Noise Color');
+
+// Open all folders
+shaderFolder.open();
+directionFolder.open();
+animationFolder.open();
+visibilityFolder.open();
+colorFolder.open();
+
 // Animation loop
 function animate(time) {
   requestAnimationFrame(animate);
   
   const t = time * 0.001;
 
-  // Rotate objects
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-  sphere.rotation.x += 0.01;
-  sphere.rotation.y += 0.01;
-  torus.rotation.x += 0.01;
-  torus.rotation.y += 0.01;
+  // Update object visibility
+  cube.visible = settings.showCube;
+  sphere.visible = settings.showSphere;
+  torus.visible = settings.showTorus;
 
-  // Update shader time uniforms
-  cube.material.uniforms.time.value = t;
-  sphere.material.uniforms.time.value = t + 1.0;
-  torus.material.uniforms.time.value = t + 2.0;
-  backgroundMaterial.uniforms.time.value = t + 3.0;
+  // Rotate objects
+  if (settings.rotationSpeed > 0) {
+    cube.rotation.x += settings.rotationSpeed;
+    cube.rotation.y += settings.rotationSpeed;
+    sphere.rotation.x += settings.rotationSpeed;
+    sphere.rotation.y += settings.rotationSpeed;
+    torus.rotation.x += settings.rotationSpeed;
+    torus.rotation.y += settings.rotationSpeed;
+  }
+
+  // Update shader uniforms
+  const materials = [cube.material, sphere.material, torus.material, backgroundMaterial];
+  materials.forEach((material, index) => {
+    material.uniforms.time.value = t + index;
+    material.uniforms.timeScale.value = settings.timeScale;
+    material.uniforms.brightnessThreshold.value = settings.brightnessThreshold;
+    material.uniforms.speedSteps.value = settings.speedSteps;
+    material.uniforms.moveSpeed.value = settings.moveSpeed;
+    material.uniforms.direction.value.set(settings.directionX, settings.directionY);
+    material.uniforms.noiseColor.value.set(settings.noiseColor);
+  });
+
+  // Update background color
+  scene.background = new THREE.Color(settings.backgroundColor);
 
   renderer.render(scene, camera);
 }
@@ -152,10 +231,10 @@ function onWindowResize() {
   
   // Update resolution uniforms
   const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-  cube.material.uniforms.resolution.value = resolution;
-  sphere.material.uniforms.resolution.value = resolution;
-  torus.material.uniforms.resolution.value = resolution;
-  backgroundMaterial.uniforms.resolution.value = resolution;
+  const materials = [cube.material, sphere.material, torus.material, backgroundMaterial];
+  materials.forEach(material => {
+    material.uniforms.resolution.value = resolution;
+  });
 }
 
 animate(0);
