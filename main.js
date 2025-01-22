@@ -7,73 +7,107 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Add some demo objects
-const geometry = new THREE.BoxGeometry();
-const material = new THREE.ShaderMaterial({
-  uniforms: {
-    time: { value: 0 },
-    prevTime: { value: 0 }
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform float time;
-    uniform float prevTime;
-    varying vec2 vUv;
+// Shared shader code
+const vertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
 
-    float random(vec2 st) {
-      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-    }
+const fragmentShader = `
+  uniform float time;
+  uniform vec2 resolution;
+  varying vec2 vUv;
 
-    float getNoiseAtTime(vec2 st, float t) {
-      float slide = floor(t * 2.0);
-      vec2 neighbor = st + vec2(0.01, 0.0) * sin(t);
-      
-      float r1 = random(st + t);
-      float r2 = random(neighbor + t);
-      
-      return step(0.5, mix(r1, r2, step(0.5, random(st + slide))));
-    }
+  float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+  }
 
-    void main() {
-      vec2 st = vUv;
-      
-      // Get noise values at current and previous time
-      float currentNoise = getNoiseAtTime(st, time);
-      float previousNoise = getNoiseAtTime(st, prevTime);
-      
-      // Show white only where the value has changed
-      float change = abs(currentNoise - previousNoise);
-      
-      vec3 color = vec3(change);
-      
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `
-});
+  vec2 wrap(vec2 value, vec2 size) {
+    return mod(mod(value, size) + size, size);
+  }
 
-const cube = new THREE.Mesh(geometry, material);
+  vec2 getMovedUv(vec2 uv, vec2 size) {
+    vec2 direction = vec2(sin(time), cos(time));
+    return wrap(uv + direction * 0.01, size);
+  }
+
+  float getBrightness(vec3 color) {
+    return (color.r + color.g + color.b) / 3.0;
+  }
+
+  void main() {
+    vec2 st = vUv;
+    vec2 size = resolution;
+    
+    // Get moved UV coordinates
+    vec2 movedUv = getMovedUv(st, vec2(1.0));
+    
+    // Generate noise values
+    float currentNoise = random(st + time);
+    float movedNoise = random(movedUv + time);
+    
+    // Create frame-based movement
+    float frame = floor(time * 10.0);
+    float speedSteps = 5.0;
+    float brightness = getBrightness(vec3(currentNoise));
+    float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
+    bool isRightFrame = mod(frame, frameDivisor) == 0.0;
+    
+    // Determine final color value
+    float value;
+    if (brightness < 0.1 || !isRightFrame) {
+      value = movedNoise;
+    } else {
+      value = mix(currentNoise, movedNoise, 0.5);
+    }
+    
+    // Output final color
+    gl_FragColor = vec4(vec3(value), 1.0);
+  }
+`;
+
+// Create materials with different time offsets for variety
+function createNoiseShaderMaterial(timeOffset = 0) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: timeOffset },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader,
+    fragmentShader,
+  });
+}
+
+// Create objects with shader materials
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(),
+  createNoiseShaderMaterial()
+);
 scene.add(cube);
 
-// Add more objects with different materials
 const sphere = new THREE.Mesh(
   new THREE.SphereGeometry(0.5, 32, 32),
-  new THREE.MeshPhongMaterial({ color: 0x00ff00 })
+  createNoiseShaderMaterial(1.0)
 );
 sphere.position.x = 2;
 scene.add(sphere);
 
 const torus = new THREE.Mesh(
   new THREE.TorusGeometry(0.3, 0.2, 16, 100),
-  new THREE.MeshPhongMaterial({ color: 0xff0000 })
+  createNoiseShaderMaterial(2.0)
 );
 torus.position.x = -2;
 scene.add(torus);
+
+// Create background plane
+const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
+const backgroundMaterial = createNoiseShaderMaterial(3.0);
+const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+background.position.z = -5;
+scene.add(background);
 
 // Add lights
 const light = new THREE.PointLight(0xffffff, 1, 100);
@@ -85,13 +119,11 @@ scene.add(ambientLight);
 
 camera.position.z = 5;
 
-let previousTime = 0;
-
 // Animation loop
 function animate(time) {
   requestAnimationFrame(animate);
   
-  const normalizedTime = time * 0.001;
+  const t = time * 0.001;
 
   // Rotate objects
   cube.rotation.x += 0.01;
@@ -101,10 +133,11 @@ function animate(time) {
   torus.rotation.x += 0.01;
   torus.rotation.y += 0.01;
 
-  // Update shader uniforms
-  material.uniforms.prevTime.value = previousTime;
-  material.uniforms.time.value = normalizedTime;
-  previousTime = normalizedTime;
+  // Update shader time uniforms
+  cube.material.uniforms.time.value = t;
+  sphere.material.uniforms.time.value = t + 1.0;
+  torus.material.uniforms.time.value = t + 2.0;
+  backgroundMaterial.uniforms.time.value = t + 3.0;
 
   renderer.render(scene, camera);
 }
@@ -116,6 +149,13 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  
+  // Update resolution uniforms
+  const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+  cube.material.uniforms.resolution.value = resolution;
+  sphere.material.uniforms.resolution.value = resolution;
+  torus.material.uniforms.resolution.value = resolution;
+  backgroundMaterial.uniforms.resolution.value = resolution;
 }
 
 animate(0);
