@@ -41,24 +41,21 @@ const objectFragmentShader = `
   vec2 getMovedUv(vec2 uv, vec2 size) {
     // Move to the right
     vec2 direction = vec2(1.0, 0.0);
-    return wrap(uv + direction * 0.01, size);
+    float frame = floor(time * 10.0);
+    bool shouldMove = mod(frame, 2.0) == 0.0;
+    return shouldMove ? wrap(uv + direction * 0.02, size) : uv;
   }
 
   void main() {
     vec2 st = vUv;
     vec2 size = vec2(1.0);
-    
     vec2 movedUv = getMovedUv(st, size);
     
-    float currentNoise = random(st + time);
-    float movedNoise = random(movedUv + time);
+    // Generate random noise
+    float value = random(movedUv + vec2(time * 0.1));
     
-    float frame = floor(time * 10.0);
-    bool shouldMove = mod(frame, 2.0) == 0.0;
-    
-    float value = shouldMove ? movedNoise : currentNoise;
-    
-    gl_FragColor = vec4(vec3(value), 1.0);
+    // Clean binary output - only black or white
+    gl_FragColor = vec4(vec3(step(0.5, value)), 1.0);
   }
 `;
 
@@ -79,24 +76,21 @@ const backgroundFragmentShader = `
   vec2 getMovedUv(vec2 uv, vec2 size) {
     // Move to the left
     vec2 direction = vec2(-1.0, 0.0);
-    return wrap(uv + direction * 0.01, size);
+    float frame = floor(time * 10.0);
+    bool shouldMove = mod(frame, 2.0) == 0.0;
+    return shouldMove ? wrap(uv + direction * 0.02, size) : uv;
   }
 
   void main() {
     vec2 st = vUv;
     vec2 size = vec2(1.0);
-    
     vec2 movedUv = getMovedUv(st, size);
     
-    float currentNoise = random(st + time);
-    float movedNoise = random(movedUv + time);
+    // Generate random noise
+    float value = random(movedUv + vec2(time * 0.1));
     
-    float frame = floor(time * 10.0);
-    bool shouldMove = mod(frame, 2.0) == 0.0;
-    
-    float value = shouldMove ? movedNoise : currentNoise;
-    
-    gl_FragColor = vec4(vec3(value), 1.0);
+    // Clean binary output - only black or white
+    gl_FragColor = vec4(vec3(step(0.5, value)), 1.0);
   }
 `;
 
@@ -150,14 +144,6 @@ const backgroundMaterial = createBackgroundShaderMaterial(3.0);
 const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
 background.position.z = -5;
 scene.add(background);
-
-// Add lights
-const light = new THREE.PointLight(0xffffff, 1, 100);
-light.position.set(0, 0, 2);
-scene.add(light);
-
-const ambientLight = new THREE.AmbientLight(0x404040);
-scene.add(ambientLight);
 
 camera.position.z = 5;
 
