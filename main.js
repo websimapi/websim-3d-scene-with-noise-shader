@@ -31,7 +31,7 @@ const objectFragmentShader = `
   varying vec2 vUv;
 
   float random(vec2 st) {
-    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    return step(0.5, fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123));
   }
 
   vec2 wrap(vec2 value, vec2 size) {
@@ -44,31 +44,19 @@ const objectFragmentShader = `
     return wrap(uv + direction * 0.01, size);
   }
 
-  float getBrightness(vec3 color) {
-    return (color.r + color.g + color.b) / 3.0;
-  }
-
   void main() {
     vec2 st = vUv;
-    vec2 size = resolution;
+    vec2 size = vec2(1.0);
     
-    vec2 movedUv = getMovedUv(st, vec2(1.0));
+    vec2 movedUv = getMovedUv(st, size);
     
     float currentNoise = random(st + time);
     float movedNoise = random(movedUv + time);
     
     float frame = floor(time * 10.0);
-    float speedSteps = 5.0;
-    float brightness = getBrightness(vec3(currentNoise));
-    float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
-    bool isRightFrame = mod(frame, frameDivisor) == 0.0;
+    bool shouldMove = mod(frame, 2.0) == 0.0;
     
-    float value;
-    if (brightness < 0.1 || !isRightFrame) {
-      value = movedNoise;
-    } else {
-      value = mix(currentNoise, movedNoise, 0.5);
-    }
+    float value = shouldMove ? movedNoise : currentNoise;
     
     gl_FragColor = vec4(vec3(value), 1.0);
   }
@@ -81,7 +69,7 @@ const backgroundFragmentShader = `
   varying vec2 vUv;
 
   float random(vec2 st) {
-    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    return step(0.5, fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123));
   }
 
   vec2 wrap(vec2 value, vec2 size) {
@@ -94,31 +82,19 @@ const backgroundFragmentShader = `
     return wrap(uv + direction * 0.01, size);
   }
 
-  float getBrightness(vec3 color) {
-    return (color.r + color.g + color.b) / 3.0;
-  }
-
   void main() {
     vec2 st = vUv;
-    vec2 size = resolution;
+    vec2 size = vec2(1.0);
     
-    vec2 movedUv = getMovedUv(st, vec2(1.0));
+    vec2 movedUv = getMovedUv(st, size);
     
     float currentNoise = random(st + time);
     float movedNoise = random(movedUv + time);
     
     float frame = floor(time * 10.0);
-    float speedSteps = 5.0;
-    float brightness = getBrightness(vec3(currentNoise));
-    float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
-    bool isRightFrame = mod(frame, frameDivisor) == 0.0;
+    bool shouldMove = mod(frame, 2.0) == 0.0;
     
-    float value;
-    if (brightness < 0.1 || !isRightFrame) {
-      value = movedNoise;
-    } else {
-      value = mix(currentNoise, movedNoise, 0.5);
-    }
+    float value = shouldMove ? movedNoise : currentNoise;
     
     gl_FragColor = vec4(vec3(value), 1.0);
   }
