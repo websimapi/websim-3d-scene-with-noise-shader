@@ -1,5 +1,4 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -8,12 +7,13 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Add OrbitControls
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; // Smooth camera movements
-controls.dampingFactor = 0.05;
-controls.minDistance = 3; // Minimum zoom distance
-controls.maxDistance = 20; // Maximum zoom distance
+// Animation control
+let isPaused = false;
+const pauseButton = document.getElementById('pauseButton');
+pauseButton.addEventListener('click', () => {
+  isPaused = !isPaused;
+  pauseButton.textContent = isPaused ? 'Resume' : 'Pause';
+});
 
 // Shared shader code
 const vertexShader = `
@@ -127,29 +127,34 @@ scene.add(ambientLight);
 
 camera.position.z = 5;
 
+// Animation state
+let lastTime = 0;
+let accumulatedTime = 0;
+
 // Animation loop
 function animate(time) {
   requestAnimationFrame(animate);
   
-  const t = time * 0.001;
+  if (!isPaused) {
+    const deltaTime = lastTime ? (time - lastTime) * 0.001 : 0;
+    accumulatedTime += deltaTime;
+    
+    // Rotate objects
+    cube.rotation.x += 0.01;
+    cube.rotation.y += 0.01;
+    sphere.rotation.x += 0.01;
+    sphere.rotation.y += 0.01;
+    torus.rotation.x += 0.01;
+    torus.rotation.y += 0.01;
 
-  // Update controls
-  controls.update();
-
-  // Rotate objects - reduced rotation speed for better control viewing
-  cube.rotation.x += 0.005;
-  cube.rotation.y += 0.005;
-  sphere.rotation.x += 0.005;
-  sphere.rotation.y += 0.005;
-  torus.rotation.x += 0.005;
-  torus.rotation.y += 0.005;
-
-  // Update shader time uniforms
-  cube.material.uniforms.time.value = t;
-  sphere.material.uniforms.time.value = t + 1.0;
-  torus.material.uniforms.time.value = t + 2.0;
-  backgroundMaterial.uniforms.time.value = t + 3.0;
-
+    // Update shader time uniforms
+    cube.material.uniforms.time.value = accumulatedTime;
+    sphere.material.uniforms.time.value = accumulatedTime + 1.0;
+    torus.material.uniforms.time.value = accumulatedTime + 2.0;
+    backgroundMaterial.uniforms.time.value = accumulatedTime + 3.0;
+  }
+  
+  lastTime = time;
   renderer.render(scene, camera);
 }
 
