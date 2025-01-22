@@ -2,36 +2,38 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.m
 
 // Global settings
 const settings = {
-  speed: 1.0,
-  noiseScale: 0.5,
+  speed: 0.5, // Slower default speed
+  noiseScale: 1.0,
   slideDirection: { x: 1.0, y: 0.0 },
-  colorA: '#ffffff',  
-  colorB: '#000000',  
-  mixRatio: 0.5,
-  valueSteps: 2,
+  colorA: '#ffffff',
+  colorB: '#000000',
+  mixRatio: 1.0, // Full contrast by default
+  valueSteps: 2, // Keep at 2 as recommended
   slideFrequency: 1.0,
-  pixelSize: 4,
-  differenceThreshold: 0.1
+  pixelSize: 8, // Larger default pixels
+  differenceThreshold: 0.2, // More pronounced difference detection
+  motionBlur: 0.8 // New setting for motion trail strength
 };
 
 // GUI setup
 const gui = new dat.GUI();
 const animationFolder = gui.addFolder('Animation');
-animationFolder.add(settings, 'speed', 0.1, 5.0).name('Animation Speed');
+animationFolder.add(settings, 'speed', 0.1, 2.0).name('Animation Speed');
 animationFolder.add(settings, 'slideFrequency', 0.1, 5.0).name('Slide Frequency');
+animationFolder.add(settings, 'motionBlur', 0, 1).name('Motion Trail');
 
 const noiseFolder = gui.addFolder('Effect');
 noiseFolder.add(settings, 'noiseScale', 0.1, 2.0).name('Effect Scale');
-noiseFolder.add(settings, 'valueSteps', 2, 10).step(1).name('Value Steps');
-noiseFolder.add(settings, 'pixelSize', 1, 16).step(1).name('Pixel Size');
-noiseFolder.add(settings, 'differenceThreshold', 0.01, 0.5).name('Difference Threshold');
+noiseFolder.add(settings, 'valueSteps', 2, 4).step(1).name('Value Steps');
+noiseFolder.add(settings, 'pixelSize', 2, 32).step(2).name('Pixel Size');
+noiseFolder.add(settings, 'differenceThreshold', 0.05, 0.5).name('Motion Sensitivity');
 
 const directionFolder = gui.addFolder('Direction');
 directionFolder.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
 directionFolder.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
 
 const colorFolder = gui.addFolder('Colors');
-colorFolder.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
+colorFolder.add(settings, 'mixRatio', 0, 1).name('Contrast');
 colorFolder.addColor(settings, 'colorA').name('Color A');
 colorFolder.addColor(settings, 'colorB').name('Color B');
 
@@ -59,7 +61,7 @@ const vertexShader = `
   }
 `;
 
-// Fragment shader with improved frame difference detection
+// Improved fragment shader with better frame difference detection
 const fragmentShader = `
   uniform float time;
   uniform float noiseScale;
@@ -71,53 +73,56 @@ const fragmentShader = `
   uniform float slideFrequency;
   uniform float pixelSize;
   uniform float differenceThreshold;
+  uniform float motionBlur;
   
   varying vec2 vUv;
   varying vec3 vNormal;
 
   // Improved hash function
   float hash(vec2 p) {
-    p = fract(p * vec2(234.34, 435.345));
-    p += dot(p, p + 34.23);
-    return fract(p.x * p.y);
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
   }
 
-  // Get frame value
+  // Get frame value with motion detection
   float getFrameValue(vec2 uv, float t) {
-    vec2 grid = floor(uv * noiseScale * 10.0) / (noiseScale * 10.0);
+    // Calculate base grid positions
+    vec2 grid = floor(uv * pixelSize) / pixelSize;
+    
+    // Calculate motion vectors
     vec2 slideOffset = slideDirection * t * slideFrequency;
-    
-    // Calculate current and previous positions
     vec2 currentPos = grid + slideOffset;
-    vec2 prevPos = currentPos - slideDirection * 0.1;
+    vec2 prevPos = currentPos - slideDirection * differenceThreshold;
     
-    // Get values for current and previous frames
+    // Sample multiple points for motion blur
     float currentValue = hash(currentPos);
     float prevValue = hash(prevPos);
     
-    // Detect motion and use appropriate value
+    // Motion detection
     float diff = abs(currentValue - prevValue);
-    if (diff > differenceThreshold) {
-      return prevValue; // Take value from previous position if moving
-    }
-    return hash(currentPos * 1.23); // Generate new random value if static
+    float motionMask = smoothstep(0.0, differenceThreshold, diff);
+    
+    // Blend between current and previous based on motion
+    return mix(
+      currentValue,
+      prevValue,
+      motionMask * motionBlur
+    );
   }
 
   void main() {
-    // Pixelate coordinates
-    vec2 pixelatedUv = floor(vUv * pixelSize) / pixelSize;
+    // Calculate base value with motion
+    float value = getFrameValue(vUv, time);
     
-    // Get frame difference value
-    float value = getFrameValue(pixelatedUv, time);
-    
-    // Quantize value steps
+    // Quantize to steps
     value = floor(value * valueSteps) / max(1.0, valueSteps - 1.0);
     
     // Apply normal-based shading
-    float shading = dot(vNormal, vec3(0.0, 0.0, 1.0)) * 0.5 + 0.5;
-    value = mix(value, value * shading, 0.3);
+    float shading = dot(vNormal, vec3(0.0, 1.0, 1.0)) * 0.5 + 0.5;
+    value = mix(value, value * shading, 0.2);
     
-    // Mix colors based on the final value
+    // Final color mix
     vec3 finalColor = mix(colorB, colorA, value * mixRatio);
     gl_FragColor = vec4(finalColor, 1.0);
   }
@@ -136,7 +141,8 @@ function createNoiseShaderMaterial(timeOffset = 0) {
       valueSteps: { value: settings.valueSteps },
       slideFrequency: { value: settings.slideFrequency },
       pixelSize: { value: settings.pixelSize },
-      differenceThreshold: { value: settings.differenceThreshold }
+      differenceThreshold: { value: settings.differenceThreshold },
+      motionBlur: { value: settings.motionBlur }
     },
     vertexShader,
     fragmentShader,
