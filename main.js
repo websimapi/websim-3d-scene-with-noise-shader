@@ -8,7 +8,7 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Shared shader code for the noise effect
+// Shader setup
 const vertexShader = `
   varying vec2 vUv;
   void main() {
@@ -88,9 +88,15 @@ let moveRight = false;
 // Controls setup
 const controls = new PointerLockControls(camera, document.body);
 
-// Add event listeners for pointer lock
-document.addEventListener('click', function () {
-  controls.lock();
+// Handle pointer lock
+document.addEventListener('click', () => controls.lock());
+
+controls.addEventListener('lock', () => {
+  document.getElementById('instructions').classList.add('hidden');
+});
+
+controls.addEventListener('unlock', () => {
+  document.getElementById('instructions').classList.remove('hidden');
 });
 
 // Movement controls
@@ -99,48 +105,30 @@ document.addEventListener('keyup', onKeyUp);
 
 function onKeyDown(event) {
   switch (event.code) {
-    case 'KeyW':
-      moveForward = true;
-      break;
-    case 'KeyS':
-      moveBackward = true;
-      break;
-    case 'KeyA':
-      moveLeft = true;
-      break;
-    case 'KeyD':
-      moveRight = true;
-      break;
+    case 'KeyW': moveForward = true; break;
+    case 'KeyS': moveBackward = true; break;
+    case 'KeyA': moveLeft = true; break;
+    case 'KeyD': moveRight = true; break;
   }
 }
 
 function onKeyUp(event) {
   switch (event.code) {
-    case 'KeyW':
-      moveForward = false;
-      break;
-    case 'KeyS':
-      moveBackward = false;
-      break;
-    case 'KeyA':
-      moveLeft = false;
-      break;
-    case 'KeyD':
-      moveRight = false;
-      break;
+    case 'KeyW': moveForward = false; break;
+    case 'KeyS': moveBackward = false; break;
+    case 'KeyA': moveLeft = false; break;
+    case 'KeyD': moveRight = false; break;
   }
 }
 
-// Create a simple environment
+// Create environment
 function createEnvironment() {
-  // Floor
   const floorGeometry = new THREE.PlaneGeometry(100, 100);
   const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  // Add some random boxes as obstacles
   for (let i = 0; i < 50; i++) {
     const boxGeometry = new THREE.BoxGeometry(2, Math.random() * 5 + 1, 2);
     const boxMaterial = new THREE.MeshStandardMaterial({ 
@@ -153,7 +141,6 @@ function createEnvironment() {
     scene.add(box);
   }
 
-  // Lighting
   const ambientLight = new THREE.AmbientLight(0x404040);
   scene.add(ambientLight);
 
@@ -162,10 +149,8 @@ function createEnvironment() {
   scene.add(directionalLight);
 }
 
-// Set initial camera position
-camera.position.y = 1.6; // Typical human height
-
-// Create the environment
+// Initial setup
+camera.position.y = 1.6;
 createEnvironment();
 
 // Animation loop
@@ -174,7 +159,6 @@ function animate(time) {
   
   const delta = time * 0.001;
 
-  // Update movement
   velocity.x = 0;
   velocity.z = 0;
 
@@ -188,15 +172,8 @@ function animate(time) {
   controls.moveRight(-velocity.x * 0.016);
   controls.moveForward(-velocity.z * 0.016);
 
-  // Update shader uniforms
   effectComposer.material.uniforms.time.value = delta;
   
-  // Custom render
-  renderer.render(scene, camera);
-
-  // Apply post-processing effect
-  const currentRT = renderer.getRenderTarget();
-  renderer.setRenderTarget(null);
   renderer.render(scene, camera);
 }
 
@@ -207,8 +184,6 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  
-  // Update resolution uniform
   effectComposer.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 }
 
