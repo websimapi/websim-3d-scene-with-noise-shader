@@ -1,18 +1,20 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
 
-// Global settings
+// Global settings (adjusted defaults)
 const settings = {
-  speed: 0.5,
-  noiseScale: 1.0,
-  slideDirection: { x: 1.0, y: 0.0 },
-  colorA: '#ffffff',
+  speed: 1.0, // Animation speed
+  noiseScale: 0.5, // Scale of the noise effect
+  slideDirection: { x: 1.0, y: 0.0 }, // Direction of sliding
+  colorA: '#ffffff', 
   colorB: '#000000',
-  mixRatio: 1.0,
-  valueSteps: 2,
-  slideFrequency: 1.0,
-  pixelSize: 32,
-  differenceThreshold: 0.2,
-  motionBlur: 0.8
+  mixRatio: 1.0, // Contrast
+  valueSteps: 2, // Number of value steps (binary effect)
+  slideFrequency: 1.0, // How often the effect updates
+  pixelSize: 64, // Increased default pixel size
+  differenceThreshold: 0.1, // Sensitivity for motion detection
+  motionBlur: 0.95, // Increased motion trail
+  randomSeed: 12345, // Seed for random generation
+  invert: false // Invert the effect
 };
 
 // GUI setup
@@ -37,11 +39,16 @@ colorFolder.add(settings, 'mixRatio', 0, 1).name('Contrast');
 colorFolder.addColor(settings, 'colorA').name('Color A');
 colorFolder.addColor(settings, 'colorB').name('Color B');
 
+const advancedFolder = gui.addFolder('Advanced');
+advancedFolder.add(settings, 'randomSeed', 0, 100000).name('Random Seed');
+advancedFolder.add(settings, 'invert').name('Invert');
+
 // Open folders by default
 animationFolder.open();
 noiseFolder.open();
 directionFolder.open();
 colorFolder.open();
+advancedFolder.open();
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -61,7 +68,7 @@ const vertexShader = `
   }
 `;
 
-// Improved fragment shader with better frame difference detection
+// Updated fragment shader to better match compute shader behavior
 const fragmentShader = `
   uniform float time;
   uniform float noiseScale;
@@ -74,50 +81,49 @@ const fragmentShader = `
   uniform float pixelSize;
   uniform float differenceThreshold;
   uniform float motionBlur;
+  uniform float randomSeed;
+  uniform bool invert;
   
   varying vec2 vUv;
   varying vec3 vNormal;
 
-  // Improved hash function
+  // Improved hash function matching compute shader random values
   float hash(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
-    p3 += dot(p3, p3.yxz + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
+    float h = dot(p, vec2(127.1, 311.7));
+    return fract(sin(h) * 43758.5453123);
   }
 
-  // Get frame value with motion detection
+  // Get frame value with improved motion detection
   float getFrameValue(vec2 uv, float t) {
-    // Use screen-space pixel coordinates for consistent sizing
     vec2 screenSize = vec2(${window.innerWidth}.0, ${window.innerHeight}.0);
-    vec2 pixelCoord = uv * screenSize;
-    vec2 grid = floor(pixelCoord / pixelSize) * pixelSize / screenSize;
+    vec2 pixelCoord = floor(uv * screenSize / pixelSize) * pixelSize;
+    vec2 normalizedCoord = pixelCoord / screenSize;
     
-    // Calculate motion vectors
+    // Calculate slide direction with time
     vec2 slideOffset = slideDirection * t * slideFrequency;
-    vec2 currentPos = grid + slideOffset;
+    vec2 currentPos = normalizedCoord + slideOffset;
     vec2 prevPos = currentPos - slideDirection * differenceThreshold;
     
-    // Sample multiple points for motion blur
-    float currentValue = hash(currentPos * noiseScale);
-    float prevValue = hash(prevPos * noiseScale);
+    // Sample positions
+    float value = hash(currentPos * noiseScale + randomSeed);
+    float prevValue = hash(prevPos * noiseScale + randomSeed);
     
-    // Motion detection
-    float diff = abs(currentValue - prevValue);
+    // Motion detection and trail
+    float diff = abs(value - prevValue);
     float motionMask = smoothstep(0.0, differenceThreshold, diff);
     
-    return mix(
-      currentValue,
-      prevValue,
-      motionMask * motionBlur
-    );
+    // Combine values with motion blur
+    float result = mix(value, prevValue, motionMask * motionBlur);
+    
+    // Quantize to steps
+    result = floor(result * valueSteps) / max(1.0, valueSteps - 1.0);
+    
+    // Apply inversion if needed
+    return invert ? 1.0 - result : result;
   }
 
   void main() {
-    // Calculate base value with motion
     float value = getFrameValue(vUv, time);
-    
-    // Quantize to steps
-    value = floor(value * valueSteps) / max(1.0, valueSteps - 1.0);
     
     // Apply normal-based shading
     float shading = dot(vNormal, vec3(0.0, 1.0, 1.0)) * 0.5 + 0.5;
@@ -143,7 +149,9 @@ function createNoiseShaderMaterial(timeOffset = 0) {
       slideFrequency: { value: settings.slideFrequency },
       pixelSize: { value: settings.pixelSize },
       differenceThreshold: { value: settings.differenceThreshold },
-      motionBlur: { value: settings.motionBlur }
+      motionBlur: { value: settings.motionBlur },
+      randomSeed: { value: settings.randomSeed },
+      invert: { value: settings.invert }
     },
     vertexShader,
     fragmentShader,
