@@ -2,25 +2,78 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.m
 
 // Global settings
 const settings = {
+  // Shader settings
   speed: 2.0,
   noiseScale: 0.01,
   noiseIntensity: 1.0,
   slideDirection: { x: 1.0, y: 0.0 },
   colorA: '#ff0000',
   colorB: '#0000ff',
-  mixRatio: 0.5
+  mixRatio: 0.5,
+  
+  // Object settings
+  cube: {
+    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+    position: { x: 0, y: 0, z: 0 }
+  },
+  sphere: {
+    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+    position: { x: 2, y: 0, z: 0 }
+  },
+  torus: {
+    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+    position: { x: -2, y: 0, z: 0 }
+  },
+  background: {
+    scale: { x: 20, y: 20, z: 1 },
+    position: { x: 0, y: 0, z: -5 }
+  }
 };
 
 // GUI setup
 const gui = new dat.GUI();
-gui.add(settings, 'speed', 0.1, 5.0).name('Animation Speed');
-gui.add(settings, 'noiseScale', 0.001, 0.05).name('Noise Scale');
-gui.add(settings, 'noiseIntensity', 0.0, 2.0).name('Noise Intensity');
-gui.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
-gui.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
-gui.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
-gui.addColor(settings, 'colorA').name('Color A');
-gui.addColor(settings, 'colorB').name('Color B');
+
+// Shader controls folder
+const shaderFolder = gui.addFolder('Shader Settings');
+shaderFolder.add(settings, 'speed', 0.1, 5.0).name('Animation Speed');
+shaderFolder.add(settings, 'noiseScale', 0.001, 0.05).name('Noise Scale');
+shaderFolder.add(settings, 'noiseIntensity', 0.0, 2.0).name('Noise Intensity');
+shaderFolder.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
+shaderFolder.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
+shaderFolder.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
+shaderFolder.addColor(settings, 'colorA').name('Color A');
+shaderFolder.addColor(settings, 'colorB').name('Color B');
+shaderFolder.open();
+
+// Object control folders
+function addObjectControls(folder, objSettings, name) {
+  const posFolder = folder.addFolder(name + ' Position');
+  posFolder.add(objSettings.position, 'x', -5, 5).name('X');
+  posFolder.add(objSettings.position, 'y', -5, 5).name('Y');
+  posFolder.add(objSettings.position, 'z', -5, 5).name('Z');
+
+  const scaleFolder = folder.addFolder(name + ' Scale');
+  scaleFolder.add(objSettings.scale, 'x', 0.1, 3).name('X');
+  scaleFolder.add(objSettings.scale, 'y', 0.1, 3).name('Y');
+  scaleFolder.add(objSettings.scale, 'z', 0.1, 3).name('Z');
+
+  if (objSettings.rotationSpeed) {
+    const rotFolder = folder.addFolder(name + ' Rotation Speed');
+    rotFolder.add(objSettings.rotationSpeed, 'x', -0.1, 0.1).name('X');
+    rotFolder.add(objSettings.rotationSpeed, 'y', -0.1, 0.1).name('Y');
+    rotFolder.add(objSettings.rotationSpeed, 'z', -0.1, 0.1).name('Z');
+  }
+}
+
+const objectsFolder = gui.addFolder('Objects');
+addObjectControls(objectsFolder, settings.cube, 'Cube');
+addObjectControls(objectsFolder, settings.sphere, 'Sphere');
+addObjectControls(objectsFolder, settings.torus, 'Torus');
+addObjectControls(objectsFolder, settings.background, 'Background');
+objectsFolder.open();
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -99,21 +152,18 @@ const sphere = new THREE.Mesh(
   new THREE.SphereGeometry(0.5, 32, 32),
   createNoiseShaderMaterial(1.0)
 );
-sphere.position.x = 2;
 scene.add(sphere);
 
 const torus = new THREE.Mesh(
   new THREE.TorusGeometry(0.3, 0.2, 16, 100),
   createNoiseShaderMaterial(2.0)
 );
-torus.position.x = -2;
 scene.add(torus);
 
 // Create background plane
-const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
+const backgroundGeometry = new THREE.PlaneGeometry(1, 1);
 const backgroundMaterial = createNoiseShaderMaterial(3.0);
 const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
-background.position.z = -5;
 scene.add(background);
 
 // Add lights
@@ -132,13 +182,34 @@ function animate(time) {
   
   const t = time * 0.001 * settings.speed;
 
-  // Rotate objects
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-  sphere.rotation.x += 0.01;
-  sphere.rotation.y += 0.01;
-  torus.rotation.x += 0.01;
-  torus.rotation.y += 0.01;
+  // Update object transformations
+  function updateObject(obj, objSettings) {
+    // Position
+    obj.position.set(
+      objSettings.position.x,
+      objSettings.position.y,
+      objSettings.position.z
+    );
+    
+    // Scale
+    obj.scale.set(
+      objSettings.scale.x,
+      objSettings.scale.y,
+      objSettings.scale.z
+    );
+    
+    // Rotation (if applicable)
+    if (objSettings.rotationSpeed) {
+      obj.rotation.x += objSettings.rotationSpeed.x;
+      obj.rotation.y += objSettings.rotationSpeed.y;
+      obj.rotation.z += objSettings.rotationSpeed.z;
+    }
+  }
+
+  updateObject(cube, settings.cube);
+  updateObject(sphere, settings.sphere);
+  updateObject(torus, settings.torus);
+  updateObject(background, settings.background);
 
   // Update all uniforms for all materials
   [cube.material, sphere.material, torus.material, backgroundMaterial].forEach((material, index) => {
