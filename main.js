@@ -10,10 +10,10 @@ document.body.appendChild(renderer.domElement);
 // Settings object
 const settings = {
   // Shader settings
-  timeScale: 1.0,
-  brightnessThreshold: 0.1,
-  speedSteps: 5.0,
-  moveSpeed: 0.01,
+  timeScale: 0.5,        // Slowed down for smoother movement
+  brightnessThreshold: 0.5,  // Adjusted threshold
+  speedSteps: 3.0,      // Reduced for more consistent movement
+  moveSpeed: 0.005,     // Reduced for smoother transitions
   // Animation settings
   rotationSpeed: 0.01,
   // Direction controls
@@ -56,36 +56,42 @@ const fragmentShader = `
     return mod(mod(value, size) + size, size);
   }
 
-  vec2 getMovedUv(vec2 uv, vec2 size) {
-    return wrap(uv + direction * moveSpeed, size);
+  vec2 getMovedUv(vec2 uv) {
+    return wrap(uv + direction * moveSpeed, vec2(1.0));
   }
 
   float getBrightness(vec3 color) {
-    return (color.r + color.g + color.b) / 3.0;
+    return dot(color, vec3(0.299, 0.587, 0.114)); // Better brightness calculation
   }
 
   void main() {
     vec2 st = vUv;
-    vec2 size = resolution;
     float scaledTime = time * timeScale;
     
-    vec2 movedUv = getMovedUv(st, vec2(1.0));
-    float currentNoise = random(st + scaledTime);
-    float movedNoise = random(movedUv + scaledTime);
+    // Calculate base noise values
+    float baseNoise = random(st + scaledTime);
+    vec2 movedSt = getMovedUv(st);
+    float neighborNoise = random(movedSt + scaledTime);
     
-    float frame = floor(scaledTime * 10.0);
-    float brightness = getBrightness(vec3(currentNoise));
-    float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
-    bool isRightFrame = mod(frame, frameDivisor) == 0.0;
+    // Frame calculation for controlled updates
+    float frameIndex = floor(scaledTime * speedSteps);
     
-    float value;
-    if (brightness < brightnessThreshold || !isRightFrame) {
-      value = movedNoise;
+    // Determine if pixel should move based on brightness
+    float brightness = getBrightness(vec3(baseNoise));
+    bool shouldMove = brightness > brightnessThreshold && 
+                     mod(frameIndex, speedSteps) == 0.0;
+    
+    // Select final value based on movement rules
+    float finalValue;
+    if (shouldMove) {
+      // If moving, take value from neighbor
+      finalValue = neighborNoise;
     } else {
-      value = mix(currentNoise, movedNoise, 0.5);
+      // If not moving, maintain current value with slight noise
+      finalValue = mix(baseNoise, random(st + frameIndex), 0.1);
     }
     
-    gl_FragColor = vec4(noiseColor * value, 1.0);
+    gl_FragColor = vec4(noiseColor * finalValue, 1.0);
   }
 `;
 
