@@ -10,15 +10,14 @@ document.body.appendChild(renderer.domElement);
 // Settings object
 const settings = {
   // Shader settings
-  timeScale: 0.5,        // Slowed down for smoother movement
-  brightnessThreshold: 0.5,  // Adjusted threshold
-  speedSteps: 3.0,      // Reduced for more consistent movement
-  moveSpeed: 0.005,     // Reduced for smoother transitions
+  timeScale: 0.1,        // Slowed down significantly
+  brightnessThreshold: 0.5,
+  noiseAmount: 0.2,      // Control random noise influence
+  // Direction controls
+  directionX: 0.0,
+  directionY: 1.0,       // Default downward movement
   // Animation settings
   rotationSpeed: 0.01,
-  // Direction controls
-  directionX: 1.0,
-  directionY: 1.0,
   // Object visibility
   showCube: true,
   showSphere: true,
@@ -41,54 +40,46 @@ const fragmentShader = `
   uniform float time;
   uniform float timeScale;
   uniform float brightnessThreshold;
-  uniform float speedSteps;
-  uniform float moveSpeed;
+  uniform float noiseAmount;
   uniform vec2 direction;
   uniform vec3 noiseColor;
-  uniform vec2 resolution;
   varying vec2 vUv;
 
   float random(vec2 st) {
     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
   }
 
-  vec2 wrap(vec2 value, vec2 size) {
-    return mod(mod(value, size) + size, size);
+  vec2 wrap(vec2 value) {
+    return fract(value);
   }
 
-  vec2 getMovedUv(vec2 uv) {
-    return wrap(uv + direction * moveSpeed, vec2(1.0));
-  }
-
-  float getBrightness(vec3 color) {
-    return dot(color, vec3(0.299, 0.587, 0.114)); // Better brightness calculation
+  float getBrightness(float value) {
+    return value;
   }
 
   void main() {
     vec2 st = vUv;
-    float scaledTime = time * timeScale;
+    float t = floor(time * timeScale);  // Discrete time steps
     
-    // Calculate base noise values
-    float baseNoise = random(st + scaledTime);
-    vec2 movedSt = getMovedUv(st);
-    float neighborNoise = random(movedSt + scaledTime);
+    // Get current and neighboring pixel positions
+    vec2 neighbor = wrap(st + direction * 0.01);
     
-    // Frame calculation for controlled updates
-    float frameIndex = floor(scaledTime * speedSteps);
+    // Generate base values
+    float currentNoise = random(st + t);
+    float neighborNoise = random(neighbor + t);
     
     // Determine if pixel should move based on brightness
-    float brightness = getBrightness(vec3(baseNoise));
-    bool shouldMove = brightness > brightnessThreshold && 
-                     mod(frameIndex, speedSteps) == 0.0;
+    float brightness = getBrightness(currentNoise);
+    bool shouldMove = brightness > brightnessThreshold;
     
-    // Select final value based on movement rules
+    // Calculate final value
     float finalValue;
     if (shouldMove) {
-      // If moving, take value from neighbor
-      finalValue = neighborNoise;
+      // Take value from neighbor
+      finalValue = mix(currentNoise, neighborNoise, 0.8);
     } else {
-      // If not moving, maintain current value with slight noise
-      finalValue = mix(baseNoise, random(st + frameIndex), 0.1);
+      // Add slight noise variation
+      finalValue = mix(currentNoise, random(st + t + 1.0), noiseAmount);
     }
     
     gl_FragColor = vec4(noiseColor * finalValue, 1.0);
@@ -102,11 +93,9 @@ function createNoiseShaderMaterial(timeOffset = 0) {
       time: { value: timeOffset },
       timeScale: { value: settings.timeScale },
       brightnessThreshold: { value: settings.brightnessThreshold },
-      speedSteps: { value: settings.speedSteps },
-      moveSpeed: { value: settings.moveSpeed },
+      noiseAmount: { value: settings.noiseAmount },
       direction: { value: new THREE.Vector2(settings.directionX, settings.directionY) },
-      noiseColor: { value: new THREE.Color(settings.noiseColor) },
-      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      noiseColor: { value: new THREE.Color(settings.noiseColor) }
     },
     vertexShader,
     fragmentShader,
@@ -158,8 +147,7 @@ const gui = new dat.GUI();
 const shaderFolder = gui.addFolder('Shader Settings');
 shaderFolder.add(settings, 'timeScale', 0, 5).name('Time Scale');
 shaderFolder.add(settings, 'brightnessThreshold', 0, 1).name('Brightness Threshold');
-shaderFolder.add(settings, 'speedSteps', 1, 10).step(1).name('Speed Steps');
-shaderFolder.add(settings, 'moveSpeed', 0, 0.1).name('Move Speed');
+shaderFolder.add(settings, 'noiseAmount', 0, 1).name('Noise Amount');
 
 // Direction controls
 const directionFolder = gui.addFolder('Direction');
@@ -194,12 +182,11 @@ function animate(time) {
   
   const t = time * 0.001;
 
-  // Update object visibility
+  // Update object visibility and rotation
   cube.visible = settings.showCube;
   sphere.visible = settings.showSphere;
   torus.visible = settings.showTorus;
 
-  // Rotate objects
   if (settings.rotationSpeed > 0) {
     cube.rotation.x += settings.rotationSpeed;
     cube.rotation.y += settings.rotationSpeed;
@@ -212,18 +199,15 @@ function animate(time) {
   // Update shader uniforms
   const materials = [cube.material, sphere.material, torus.material, backgroundMaterial];
   materials.forEach((material, index) => {
-    material.uniforms.time.value = t + index;
+    material.uniforms.time.value = t;
     material.uniforms.timeScale.value = settings.timeScale;
     material.uniforms.brightnessThreshold.value = settings.brightnessThreshold;
-    material.uniforms.speedSteps.value = settings.speedSteps;
-    material.uniforms.moveSpeed.value = settings.moveSpeed;
+    material.uniforms.noiseAmount.value = settings.noiseAmount;
     material.uniforms.direction.value.set(settings.directionX, settings.directionY);
     material.uniforms.noiseColor.value.set(settings.noiseColor);
   });
 
-  // Update background color
   scene.background = new THREE.Color(settings.backgroundColor);
-
   renderer.render(scene, camera);
 }
 
@@ -234,13 +218,6 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  
-  // Update resolution uniforms
-  const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-  const materials = [cube.material, sphere.material, torus.material, backgroundMaterial];
-  materials.forEach(material => {
-    material.uniforms.resolution.value = resolution;
-  });
 }
 
 animate(0);
