@@ -1,5 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
-import { PointerLockControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/PointerLockControls.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/controls/OrbitControls.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -8,7 +8,14 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Shader setup
+// Add OrbitControls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; // Smooth camera movements
+controls.dampingFactor = 0.05;
+controls.minDistance = 3; // Minimum zoom distance
+controls.maxDistance = 20; // Maximum zoom distance
+
+// Shared shader code
 const vertexShader = `
   varying vec2 vUv;
   void main() {
@@ -43,16 +50,21 @@ const fragmentShader = `
     vec2 st = vUv;
     vec2 size = resolution;
     
+    // Get moved UV coordinates
     vec2 movedUv = getMovedUv(st, vec2(1.0));
+    
+    // Generate noise values
     float currentNoise = random(st + time);
     float movedNoise = random(movedUv + time);
     
+    // Create frame-based movement
     float frame = floor(time * 10.0);
     float speedSteps = 5.0;
     float brightness = getBrightness(vec3(currentNoise));
     float frameDivisor = speedSteps - max(ceil(speedSteps * min(brightness, 1.0)), 1.0) + 1.0;
     bool isRightFrame = mod(frame, frameDivisor) == 0.0;
     
+    // Determine final color value
     float value;
     if (brightness < 0.1 || !isRightFrame) {
       value = movedNoise;
@@ -60,120 +72,84 @@ const fragmentShader = `
       value = mix(currentNoise, movedNoise, 0.5);
     }
     
+    // Output final color
     gl_FragColor = vec4(vec3(value), 1.0);
   }
 `;
 
-// Create post-processing effect
-const effectComposer = {
-  material: new THREE.ShaderMaterial({
+// Create materials with different time offsets for variety
+function createNoiseShaderMaterial(timeOffset = 0) {
+  return new THREE.ShaderMaterial({
     uniforms: {
-      time: { value: 0 },
+      time: { value: timeOffset },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
     },
     vertexShader,
     fragmentShader,
-  })
-};
-
-// Movement setup
-const moveSpeed = 5.0;
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-let moveForward = false;
-let moveBackward = false;
-let moveLeft = false;
-let moveRight = false;
-
-// Controls setup
-const controls = new PointerLockControls(camera, document.body);
-
-// Handle pointer lock
-document.addEventListener('click', () => controls.lock());
-
-controls.addEventListener('lock', () => {
-  document.getElementById('instructions').classList.add('hidden');
-});
-
-controls.addEventListener('unlock', () => {
-  document.getElementById('instructions').classList.remove('hidden');
-});
-
-// Movement controls
-document.addEventListener('keydown', onKeyDown);
-document.addEventListener('keyup', onKeyUp);
-
-function onKeyDown(event) {
-  switch (event.code) {
-    case 'KeyW': moveForward = true; break;
-    case 'KeyS': moveBackward = true; break;
-    case 'KeyA': moveLeft = true; break;
-    case 'KeyD': moveRight = true; break;
-  }
+  });
 }
 
-function onKeyUp(event) {
-  switch (event.code) {
-    case 'KeyW': moveForward = false; break;
-    case 'KeyS': moveBackward = false; break;
-    case 'KeyA': moveLeft = false; break;
-    case 'KeyD': moveRight = false; break;
-  }
-}
+// Create objects with shader materials
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(),
+  createNoiseShaderMaterial()
+);
+scene.add(cube);
 
-// Create environment
-function createEnvironment() {
-  const floorGeometry = new THREE.PlaneGeometry(100, 100);
-  const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI / 2;
-  scene.add(floor);
+const sphere = new THREE.Mesh(
+  new THREE.SphereGeometry(0.5, 32, 32),
+  createNoiseShaderMaterial(1.0)
+);
+sphere.position.x = 2;
+scene.add(sphere);
 
-  for (let i = 0; i < 50; i++) {
-    const boxGeometry = new THREE.BoxGeometry(2, Math.random() * 5 + 1, 2);
-    const boxMaterial = new THREE.MeshStandardMaterial({ 
-      color: new THREE.Color(Math.random(), Math.random(), Math.random()) 
-    });
-    const box = new THREE.Mesh(boxGeometry, boxMaterial);
-    box.position.x = Math.random() * 80 - 40;
-    box.position.z = Math.random() * 80 - 40;
-    box.position.y = boxGeometry.parameters.height / 2;
-    scene.add(box);
-  }
+const torus = new THREE.Mesh(
+  new THREE.TorusGeometry(0.3, 0.2, 16, 100),
+  createNoiseShaderMaterial(2.0)
+);
+torus.position.x = -2;
+scene.add(torus);
 
-  const ambientLight = new THREE.AmbientLight(0x404040);
-  scene.add(ambientLight);
+// Create background plane
+const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
+const backgroundMaterial = createNoiseShaderMaterial(3.0);
+const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+background.position.z = -5;
+scene.add(background);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-  directionalLight.position.set(1, 1, 1);
-  scene.add(directionalLight);
-}
+// Add lights
+const light = new THREE.PointLight(0xffffff, 1, 100);
+light.position.set(0, 0, 2);
+scene.add(light);
 
-// Initial setup
-camera.position.y = 1.6;
-createEnvironment();
+const ambientLight = new THREE.AmbientLight(0x404040);
+scene.add(ambientLight);
+
+camera.position.z = 5;
 
 // Animation loop
 function animate(time) {
   requestAnimationFrame(animate);
   
-  const delta = time * 0.001;
+  const t = time * 0.001;
 
-  velocity.x = 0;
-  velocity.z = 0;
+  // Update controls
+  controls.update();
 
-  direction.z = Number(moveForward) - Number(moveBackward);
-  direction.x = Number(moveRight) - Number(moveLeft);
-  direction.normalize();
+  // Rotate objects - reduced rotation speed for better control viewing
+  cube.rotation.x += 0.005;
+  cube.rotation.y += 0.005;
+  sphere.rotation.x += 0.005;
+  sphere.rotation.y += 0.005;
+  torus.rotation.x += 0.005;
+  torus.rotation.y += 0.005;
 
-  if (moveForward || moveBackward) velocity.z -= direction.z * moveSpeed;
-  if (moveLeft || moveRight) velocity.x -= direction.x * moveSpeed;
+  // Update shader time uniforms
+  cube.material.uniforms.time.value = t;
+  sphere.material.uniforms.time.value = t + 1.0;
+  torus.material.uniforms.time.value = t + 2.0;
+  backgroundMaterial.uniforms.time.value = t + 3.0;
 
-  controls.moveRight(-velocity.x * 0.016);
-  controls.moveForward(-velocity.z * 0.016);
-
-  effectComposer.material.uniforms.time.value = delta;
-  
   renderer.render(scene, camera);
 }
 
@@ -184,7 +160,13 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  effectComposer.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+  
+  // Update resolution uniforms
+  const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+  cube.material.uniforms.resolution.value = resolution;
+  sphere.material.uniforms.resolution.value = resolution;
+  torus.material.uniforms.resolution.value = resolution;
+  backgroundMaterial.uniforms.resolution.value = resolution;
 }
 
 animate(0);
