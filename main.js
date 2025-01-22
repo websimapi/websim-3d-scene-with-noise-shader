@@ -2,91 +2,56 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.m
 
 // Global settings
 const settings = {
-  // Shader settings
   speed: 2.0,
   noiseScale: 0.01,
   noiseIntensity: 1.0,
   slideDirection: { x: 1.0, y: 0.0 },
-  colorA: '#ff0000',
-  colorB: '#0000ff',
+  colorA: '#ffffff',  
+  colorB: '#000000',  
   mixRatio: 0.5,
-  
-  // Object settings
-  cube: {
-    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
-    scale: { x: 1, y: 1, z: 1 },
-    position: { x: 0, y: 0, z: 0 }
-  },
-  sphere: {
-    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
-    scale: { x: 1, y: 1, z: 1 },
-    position: { x: 2, y: 0, z: 0 }
-  },
-  torus: {
-    rotationSpeed: { x: 0.01, y: 0.01, z: 0 },
-    scale: { x: 1, y: 1, z: 1 },
-    position: { x: -2, y: 0, z: 0 }
-  },
-  background: {
-    scale: { x: 20, y: 20, z: 1 },
-    position: { x: 0, y: 0, z: -5 }
-  }
+  valueSteps: 2,
+  slideFrequency: 1.0
 };
 
 // GUI setup
 const gui = new dat.GUI();
+const animationFolder = gui.addFolder('Animation');
+animationFolder.add(settings, 'speed', 0.1, 5.0).name('Animation Speed');
+animationFolder.add(settings, 'slideFrequency', 0.1, 5.0).name('Slide Frequency');
 
-// Shader controls folder
-const shaderFolder = gui.addFolder('Shader Settings');
-shaderFolder.add(settings, 'speed', 0.1, 5.0).name('Animation Speed');
-shaderFolder.add(settings, 'noiseScale', 0.001, 0.05).name('Noise Scale');
-shaderFolder.add(settings, 'noiseIntensity', 0.0, 2.0).name('Noise Intensity');
-shaderFolder.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
-shaderFolder.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
-shaderFolder.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
-shaderFolder.addColor(settings, 'colorA').name('Color A');
-shaderFolder.addColor(settings, 'colorB').name('Color B');
-shaderFolder.open();
+const noiseFolder = gui.addFolder('Noise');
+noiseFolder.add(settings, 'noiseScale', 0.001, 0.05).name('Noise Scale');
+noiseFolder.add(settings, 'noiseIntensity', 0.0, 2.0).name('Noise Intensity');
+noiseFolder.add(settings, 'valueSteps', 1, 10).step(1).name('Value Steps');
 
-// Object control folders
-function addObjectControls(folder, objSettings, name) {
-  const posFolder = folder.addFolder(name + ' Position');
-  posFolder.add(objSettings.position, 'x', -5, 5).name('X');
-  posFolder.add(objSettings.position, 'y', -5, 5).name('Y');
-  posFolder.add(objSettings.position, 'z', -5, 5).name('Z');
+const directionFolder = gui.addFolder('Direction');
+directionFolder.add(settings.slideDirection, 'x', -1, 1).name('Slide Direction X');
+directionFolder.add(settings.slideDirection, 'y', -1, 1).name('Slide Direction Y');
 
-  const scaleFolder = folder.addFolder(name + ' Scale');
-  scaleFolder.add(objSettings.scale, 'x', 0.1, 3).name('X');
-  scaleFolder.add(objSettings.scale, 'y', 0.1, 3).name('Y');
-  scaleFolder.add(objSettings.scale, 'z', 0.1, 3).name('Z');
+const colorFolder = gui.addFolder('Colors');
+colorFolder.add(settings, 'mixRatio', 0, 1).name('Color Mix Ratio');
+colorFolder.addColor(settings, 'colorA').name('Color A');
+colorFolder.addColor(settings, 'colorB').name('Color B');
 
-  if (objSettings.rotationSpeed) {
-    const rotFolder = folder.addFolder(name + ' Rotation Speed');
-    rotFolder.add(objSettings.rotationSpeed, 'x', -0.1, 0.1).name('X');
-    rotFolder.add(objSettings.rotationSpeed, 'y', -0.1, 0.1).name('Y');
-    rotFolder.add(objSettings.rotationSpeed, 'z', -0.1, 0.1).name('Z');
-  }
-}
+// Open folders by default
+animationFolder.open();
+noiseFolder.open();
+directionFolder.open();
 
-const objectsFolder = gui.addFolder('Objects');
-addObjectControls(objectsFolder, settings.cube, 'Cube');
-addObjectControls(objectsFolder, settings.sphere, 'Sphere');
-addObjectControls(objectsFolder, settings.torus, 'Torus');
-addObjectControls(objectsFolder, settings.background, 'Background');
-objectsFolder.open();
-
-// Scene setup
+// Scene setup remains the same
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Shared shader code
+// Updated shader code
 const vertexShader = `
   varying vec2 vUv;
+  varying vec3 vNormal;
   void main() {
     vUv = uv;
+    vNormal = normal;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -99,32 +64,52 @@ const fragmentShader = `
   uniform vec3 colorA;
   uniform vec3 colorB;
   uniform float mixRatio;
+  uniform float valueSteps;
+  uniform float slideFrequency;
+  
   varying vec2 vUv;
+  varying vec3 vNormal;
 
   float random(vec2 st) {
     return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
   }
 
+  float getSlideValue(vec2 uv, float t) {
+    float slideTime = floor(t * slideFrequency);
+    vec2 neighbor = uv + noiseScale * slideDirection * sin(t);
+    
+    float r1 = random(uv + slideTime);
+    float r2 = random(neighbor + slideTime);
+    
+    // Check if neighbor pixel is moving
+    float neighborMoving = step(0.5, random(neighbor + slideTime + 1.0));
+    
+    // Apply the two-rule system:
+    // 1. If pixel moves, take neighbor's value
+    // 2. If neighbor also moves, use random value
+    float value = mix(r2, r1, neighborMoving);
+    
+    // Quantize the value into steps
+    value = floor(value * valueSteps) / max(1.0, valueSteps - 1.0);
+    
+    return value * noiseIntensity;
+  }
+
   void main() {
-    vec2 st = vUv;
-    float slide = floor(time * 2.0);
+    float slide = getSlideValue(vUv, time);
     
-    // Use slide direction for neighbor calculation
-    vec2 neighbor = st + noiseScale * slideDirection * sin(time);
+    // Add some depth based on normals
+    float depth = dot(vNormal, vec3(0.0, 0.0, 1.0)) * 0.5 + 0.5;
+    slide = mix(slide, slide * depth, 0.3);
     
-    float r1 = random(st + time);
-    float r2 = random(neighbor + time);
-    
-    float noise = mix(r1, r2, step(0.5, random(st + slide))) * noiseIntensity;
-    
-    // Mix colors based on noise and mixRatio
-    vec3 finalColor = mix(colorA, colorB, noise * mixRatio);
+    // Mix colors based on the slide value and mixRatio
+    vec3 finalColor = mix(colorB, colorA, slide * mixRatio);
     
     gl_FragColor = vec4(finalColor, 1.0);
   }
 `;
 
-// Create materials with different time offsets for variety
+// Rest of the code remains the same
 function createNoiseShaderMaterial(timeOffset = 0) {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -134,7 +119,9 @@ function createNoiseShaderMaterial(timeOffset = 0) {
       slideDirection: { value: new THREE.Vector2(settings.slideDirection.x, settings.slideDirection.y) },
       colorA: { value: new THREE.Color(settings.colorA) },
       colorB: { value: new THREE.Color(settings.colorB) },
-      mixRatio: { value: settings.mixRatio }
+      mixRatio: { value: settings.mixRatio },
+      valueSteps: { value: settings.valueSteps },
+      slideFrequency: { value: settings.slideFrequency }
     },
     vertexShader,
     fragmentShader,
@@ -152,21 +139,24 @@ const sphere = new THREE.Mesh(
   new THREE.SphereGeometry(0.5, 32, 32),
   createNoiseShaderMaterial(1.0)
 );
+sphere.position.x = 2;
 scene.add(sphere);
 
 const torus = new THREE.Mesh(
   new THREE.TorusGeometry(0.3, 0.2, 16, 100),
   createNoiseShaderMaterial(2.0)
 );
+torus.position.x = -2;
 scene.add(torus);
 
 // Create background plane
-const backgroundGeometry = new THREE.PlaneGeometry(1, 1);
+const backgroundGeometry = new THREE.PlaneGeometry(20, 20);
 const backgroundMaterial = createNoiseShaderMaterial(3.0);
 const background = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+background.position.z = -5;
 scene.add(background);
 
-// Add lights
+// Lighting setup remains the same
 const light = new THREE.PointLight(0xffffff, 1, 100);
 light.position.set(0, 0, 2);
 scene.add(light);
@@ -182,36 +172,15 @@ function animate(time) {
   
   const t = time * 0.001 * settings.speed;
 
-  // Update object transformations
-  function updateObject(obj, objSettings) {
-    // Position
-    obj.position.set(
-      objSettings.position.x,
-      objSettings.position.y,
-      objSettings.position.z
-    );
-    
-    // Scale
-    obj.scale.set(
-      objSettings.scale.x,
-      objSettings.scale.y,
-      objSettings.scale.z
-    );
-    
-    // Rotation (if applicable)
-    if (objSettings.rotationSpeed) {
-      obj.rotation.x += objSettings.rotationSpeed.x;
-      obj.rotation.y += objSettings.rotationSpeed.y;
-      obj.rotation.z += objSettings.rotationSpeed.z;
-    }
-  }
+  // Update rotations
+  cube.rotation.x += 0.01;
+  cube.rotation.y += 0.01;
+  sphere.rotation.x += 0.01;
+  sphere.rotation.y += 0.01;
+  torus.rotation.x += 0.01;
+  torus.rotation.y += 0.01;
 
-  updateObject(cube, settings.cube);
-  updateObject(sphere, settings.sphere);
-  updateObject(torus, settings.torus);
-  updateObject(background, settings.background);
-
-  // Update all uniforms for all materials
+  // Update all uniforms
   [cube.material, sphere.material, torus.material, backgroundMaterial].forEach((material, index) => {
     material.uniforms.time.value = t + index;
     material.uniforms.noiseScale.value = settings.noiseScale;
@@ -220,6 +189,8 @@ function animate(time) {
     material.uniforms.colorA.value.set(settings.colorA);
     material.uniforms.colorB.value.set(settings.colorB);
     material.uniforms.mixRatio.value = settings.mixRatio;
+    material.uniforms.valueSteps.value = settings.valueSteps;
+    material.uniforms.slideFrequency.value = settings.slideFrequency;
   });
 
   renderer.render(scene, camera);
