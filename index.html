@@ -1,13 +1,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>3D Scene with Noise Shaders</title>
+  <title>First Person Game with Noise Effect</title>
   <style>
-    body { margin: 0; }
-    canvas { width: 100vw; height: 100vh; display: block; }
+    body { 
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    canvas { 
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+    #instructions {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 20px;
+      border-radius: 5px;
+      display: none;
+    }
+    #instructions.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
+  <div id="instructions" class="visible">
+    <h1>First Person Explorer</h1>
+    <p>Click to start</p>
+    <p>WASD to move</p>
+    <p>Mouse to look around</p>
+    <p>ESC to pause</p>
+  </div>
   <script type="module" src="main.js"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
